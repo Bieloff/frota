@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sistema de Gestão de Frota</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f6fb;--bg2:#fff;--bg3:#f0f2f8;--sidebar:#1a2340;--sidebar2:#232f55;
+    --accent:#3b6ef5;--accent2:#2452cc;--text:#1a2340;--text2:#5a6282;--text3:#8a90b0;
+    --border:#e0e4f0;--danger:#e24b4a;--warning:#ef9f27;--success:#1d9e75;--info:#378add;
+    --radius:10px;--shadow:0 2px 12px rgba(30,40,80,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh;font-size:14px}
+  #sidebar{width:220px;background:var(--sidebar);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;transition:.3s}
+  #sidebar .logo{padding:24px 20px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+  #sidebar .logo span{font-size:16px;font-weight:700;color:#fff;display:block}
+  #sidebar .logo small{font-size:11px;color:rgba(255,255,255,.45);margin-top:2px;display:block}
+  #sidebar nav{flex:1;padding:16px 0;overflow-y:auto}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:11px 20px;color:rgba(255,255,255,.65);cursor:pointer;font-size:13px;transition:.15s;border-left:3px solid transparent}
+  .nav-item:hover{background:rgba(255,255,255,.06);color:#fff}
+  .nav-item.active{background:rgba(59,110,245,.18);color:#fff;border-left-color:var(--accent)}
+  .nav-item svg{width:17px;height:17px;flex-shrink:0;opacity:.75}
+  .nav-item.active svg{opacity:1}
+  #sidebar .footer{padding:14px 20px;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.3)}
+  #main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+  #topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+  #topbar h1{font-size:16px;font-weight:600;color:var(--text)}
+  .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .badge-alert{background:#fff3cd;color:#856404;border:1px solid #ffc107;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer}
+  .sync-btn{background:var(--accent);color:#fff;border:none;border-radius:20px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.15s}
+  .sync-btn:hover{background:var(--accent2)}
+  .sync-btn:disabled{opacity:.6;cursor:not-allowed}
+  .sync-btn svg{width:13px;height:13px}
+  .spinning{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .last-sync{font-size:10px;color:var(--text3)}
+  #content{padding:24px 28px;flex:1;position:relative}
+  .section{display:none}
+  .section.active{display:block}
+  /* Loading overlay */
+  #loadingOverlay{position:fixed;inset:0;background:rgba(26,35,64,.7);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;backdrop-filter:blur(3px)}
+  #loadingOverlay.hidden{display:none}
+  .loader-card{background:#fff;border-radius:16px;padding:32px 40px;text-align:center;min-width:280px;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .loader-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+  .loader-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px}
+  .loader-sub{font-size:12px;color:var(--text2)}
+  .loader-steps{margin-top:14px;text-align:left}
+  .loader-step{font-size:11px;color:var(--text3);padding:3px 0;display:flex;align-items:center;gap:7px}
+  .loader-step.done{color:var(--success)}
+  .loader-step.active{color:var(--accent);font-weight:600}
+  .step-icon{width:14px;height:14px;flex-shrink:0}
+  /* Error banner */
+  #errorBanner{background:#fff0f0;border:1px solid #f5c6c6;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:none;align-items:flex-start;gap:10px}
+  #errorBanner.show{display:flex}
+  .err-icon{font-size:20px;flex-shrink:0}
+  .err-body .err-title{font-size:13px;font-weight:600;color:#c0392b}
+  .err-body .err-desc{font-size:11px;color:var(--text2);margin-top:3px}
+  .err-retry{background:#e24b4a;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;cursor:pointer;margin-top:6px;font-weight:600}
+  /* Status chip */
+  .status-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:3px 8px;border-radius:12px;font-weight:600}
+  .status-chip.ok{background:#e6f9f0;color:#14855a}
+  .status-chip.err{background:#ffecec;color:#c0392b}
+  .status-chip.loading{background:#e6f1fb;color:#185fa5}
+  .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+  /* KPI grid */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px}
+  .kpi-card{background:var(--bg2);border-radius:var(--radius);padding:18px 18px 14px;box-shadow:var(--shadow);border:1px solid var(--border);position:relative;overflow:hidden}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
+  .kpi-card.danger::before{background:var(--danger)}
+  .kpi-card.warning::before{background:var(--warning)}
+  .kpi-card.success::before{background:var(--success)}
+  .kpi-label{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+  .kpi-value{font-size:26px;font-weight:700;color:var(--text);line-height:1}
+  .kpi-sub{font-size:11px;color:var(--text2);margin-top:6px}
+  .kpi-icon{position:absolute;right:14px;top:14px;opacity:.1;font-size:36px;line-height:1}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:24px}
+  .chart-card{background:var(--bg2);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);border:1px solid var(--border)}
+  .chart-card.full{grid-column:1/-1}
+  .chart-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+  .chart-sub{font-size:11px;color:var(--text3);margin-bottom:14px}
+  .chart-wrap{position:relative;width:100%}
+  .table-card{background:var(--bg2);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:18px;overflow:hidden}
+  .table-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+  .table-title{font-size:13px;font-weight:600;color:var(--text)}
+  .table-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .search-input{border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:12px;color:var(--text);background:var(--bg);outline:none;width:220px}
+  .search-input:focus{border-color:var(--accent)}
+  select.filter-select{border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--text);background:var(--bg);outline:none;cursor:pointer}
+  select.filter-select:focus{border-color:var(--accent)}
+  .tbl-wrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;padding:10px 12px;background:var(--bg3);color:var(--text2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+  th:hover{background:var(--border)}
+  td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--bg3)}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;letter-spacing:.03em}
+  .bd-danger{background:#ffecec;color:#c0392b}
+  .bd-warning{background:#fff5e0;color:#b7760a}
+  .bd-success{background:#e6f9f0;color:#14855a}
+  .bd-info{background:#e6f1fb;color:#185fa5}
+  .bd-gray{background:#f0f2f8;color:#5a6282}
+  .prog-wrap{display:flex;align-items:center;gap:8px}
+  .prog-bg{flex:1;height:6px;background:var(--bg3);border-radius:4px;overflow:hidden;min-width:60px}
+  .prog-fill{height:6px;border-radius:4px}
+  .prog-val{font-size:11px;font-weight:600;width:38px;text-align:right;color:var(--text)}
+  .alert-item{border-radius:8px;padding:12px 16px;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start;border:1px solid transparent}
+  .alert-item.crit{background:#fff0f0;border-color:#f5c6c6}
+  .alert-item.warn{background:#fffaeb;border-color:#fde9a0}
+  .alert-icon{font-size:20px;flex-shrink:0;margin-top:1px}
+  .alert-body .al-title{font-size:13px;font-weight:600;color:var(--text)}
+  .alert-body .al-desc{font-size:11px;color:var(--text2);margin-top:3px}
+  .page-header{margin-bottom:20px}
+  .page-header h2{font-size:20px;font-weight:700;color:var(--text)}
+  .page-header p{font-size:12px;color:var(--text3);margin-top:4px}
+  .pagination{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:12px}
+  .page-btn{border:1px solid var(--border);background:var(--bg2);border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--text2)}
+  .page-btn.active,.page-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .row-count{font-size:11px;color:var(--text3)}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:11px;color:var(--text2)}
+  .ld{display:flex;align-items:center;gap:5px}
+  .ld-dot{width:10px;height:10px;border-radius:2px}
+  .disp-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px}
+  .disp-lbl{width:82px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+  .disp-val{width:40px;text-align:right;font-weight:600;color:var(--text)}
+  /* Skeleton loader */
+  .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg) 50%,var(--bg3) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px;height:20px;margin-bottom:8px}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .sheets-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);background:var(--bg3);border-radius:10px;padding:2px 8px}
+  .sheets-badge svg{width:12px;height:12px}
+  @media(max-width:768px){
+    #sidebar{width:100%;height:auto;position:relative}
+    #main{margin-left:0}
+    .charts-grid{grid-template-columns:1fr}
+    .chart-card.full,.chart-card{grid-column:1/-1}
+    .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  }
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+</style>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay">
+  <div class="loader-card">
+    <div class="loader-spinner"></div>
+    <div class="loader-title">Carregando dados da frota</div>
+    <div class="loader-sub">Conectando ao Google Sheets...</div>
+    <div class="loader-steps" id="loaderSteps">
+      <div class="loader-step" id="step1"><svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>Manutenções</div>
+      <div class="loader-step" id="step2"><svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>Cadastro da frota</div>
+      <div class="loader-step" id="step3"><svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>Indicadores</div>
+      <div class="loader-step" id="step4"><svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>Tacógrafos</div>
+      <div class="loader-step" id="step5"><svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>Lançamentos & Pneus</div>
+    </div>
+  </div>
+</div>
+
+<aside id="sidebar">
+  <div class="logo">
+    <span>🚛 Frota</span>
+    <small>Sistema de Gestão</small>
+  </div>
+  <nav>
+    <div class="nav-item active" onclick="showSection('dashboard')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>Dashboard
+    </div>
+    <div class="nav-item" onclick="showSection('manutencoes')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Manutenções
+    </div>
+    <div class="nav-item" onclick="showSection('frota')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Frota / Cadastro
+    </div>
+    <div class="nav-item" onclick="showSection('indicadores')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Indicadores
+    </div>
+    <div class="nav-item" onclick="showSection('tacografos')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Tacógrafos
+    </div>
+    <div class="nav-item" onclick="showSection('pneus')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>Pneus
+    </div>
+    <div class="nav-item" onclick="showSection('alertas')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Alertas
+    </div>
+  </nav>
+  <div class="footer" id="sidebarFooter">Aguardando dados...</div>
+</aside>
+
+<div id="main">
+  <div id="topbar">
+    <h1 id="topbar-title">Dashboard Executivo</h1>
+    <div class="topbar-right">
+      <div class="sheets-badge">
+        <svg viewBox="0 0 24 24" fill="#1d9e75"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-7 14H7v-2h5v2zm5-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        Google Sheets
+      </div>
+      <span id="syncStatus" class="status-chip ok"><span class="dot"></span>Sincronizado</span>
+      <span class="last-sync" id="lastSync">—</span>
+      <button class="sync-btn" id="syncBtn" onclick="syncData()">
+        <svg id="syncIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Sincronizar
+      </button>
+      <span class="badge-alert" onclick="showSection('alertas')" id="alertBadge">⚠ Alertas</span>
+      <span style="font-size:12px;color:var(--text3)" id="topbarSub">Carregando...</span>
+    </div>
+  </div>
+
+  <div id="content">
+    <div id="errorBanner">
+      <div class="err-icon">🔌</div>
+      <div class="err-body">
+        <div class="err-title">Erro ao conectar ao Google Sheets</div>
+        <div class="err-desc" id="errDesc">Verifique se a planilha está pública e tente novamente.</div>
+        <button class="err-retry" onclick="syncData()">Tentar novamente</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="section-dashboard" class="section active">
+      <div class="page-header">
+        <h2>Visão Geral Executiva</h2>
+        <p id="dashSubtitle">Carregando dados...</p>
+      </div>
+      <div class="kpi-grid" id="dashKpis"></div>
+      <div class="charts-grid">
+        <div class="chart-card full">
+          <div class="chart-title">Evolução do custo mensal de manutenção</div>
+          <div class="chart-sub" id="chartMesSub">Valores em R$</div>
+          <div class="chart-wrap" style="height:230px"><canvas id="chartMes"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Distribuição por tipo de manutenção</div>
+          <div class="chart-sub">Proporção de custos e ocorrências</div>
+          <div class="legend" id="legendTipo"></div>
+          <div class="chart-wrap" style="height:200px"><canvas id="chartTipo"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Top veículos — custo acumulado</div>
+          <div class="chart-sub">Ranking de maior gasto no período</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chartVeiculos"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Disponibilidade por veículo (%)</div>
+          <div class="chart-sub">Meta ≥ 95%</div>
+          <div id="dispBars" style="padding-top:4px"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Top 10 oficinas por gasto</div>
+          <div class="chart-sub">Volume em R$ no período</div>
+          <div id="oficinaBars" style="padding-top:4px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANUTENÇÕES -->
+    <div id="section-manutencoes" class="section">
+      <div class="page-header">
+        <h2>Registro de Manutenções</h2>
+        <p id="manSubtitle">Carregando...</p>
+      </div>
+      <div class="charts-grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="chart-card"><div class="chart-title">Ocorrências por tipo</div><div class="chart-wrap" style="height:140px"><canvas id="chartTipoQtd"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Custo por tipo (R$)</div><div class="chart-wrap" style="height:140px"><canvas id="chartTipoCusto"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Custo acumulado por mês</div><div class="chart-wrap" style="height:140px"><canvas id="chartMiniMes"></canvas></div></div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Todas as ordens de serviço</div>
+          <div class="table-controls">
+            <input type="text" class="search-input" id="manSearch" placeholder="Buscar placa, tipo, oficina..." oninput="filterMan()">
+            <select class="filter-select" id="manTipo" onchange="filterMan()"><option value="">Todos os tipos</option></select>
+            <select class="filter-select" id="manPlaca" onchange="filterMan()"><option value="">Todas as placas</option></select>
+            <select class="filter-select" id="manMes" onchange="filterMan()"><option value="">Todos os meses</option></select>
+            <span class="row-count" id="manCount"></span>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr>
+          <th onclick="sortMan('data')">Data ↕</th>
+          <th onclick="sortMan('placa')">Placa ↕</th>
+          <th onclick="sortMan('tipo')">Tipo ↕</th>
+          <th>Serviço</th>
+          <th onclick="sortMan('oficina')">Oficina ↕</th>
+          <th onclick="sortMan('valor')" style="text-align:right">Valor ↕</th>
+        </tr></thead><tbody id="manBody"></tbody></table></div>
+        <div class="pagination" id="manPag"></div>
+      </div>
+    </div>
+
+    <!-- FROTA -->
+    <div id="section-frota" class="section">
+      <div class="page-header"><h2>Cadastro da Frota</h2><p id="frotaSubtitle">Carregando...</p></div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Veículos cadastrados</div>
+          <div class="table-controls">
+            <input type="text" class="search-input" id="frotaSearch" placeholder="Buscar placa, modelo, motorista..." oninput="filterFrota()">
+            <select class="filter-select" id="frotaComb" onchange="filterFrota()"><option value="">Todos os combustíveis</option></select>
+            <span class="row-count" id="frotaCount"></span>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr>
+          <th>#</th><th>Placa</th><th>Modelo</th><th>Ano</th><th>KM Atual</th>
+          <th>Combustível</th><th>Motorista</th><th>Situação</th><th>Custo Total</th>
+        </tr></thead><tbody id="frotaBody"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- INDICADORES -->
+    <div id="section-indicadores" class="section">
+      <div class="page-header"><h2>Indicadores de Confiabilidade</h2><p>MTBF, MTTR e disponibilidade operacional</p></div>
+      <div class="kpi-grid" id="indKpis"></div>
+      <div class="charts-grid">
+        <div class="chart-card full">
+          <div class="chart-title">Disponibilidade por veículo (%)</div>
+          <div class="chart-sub">Meta ≥ 95% (linha vermelha)</div>
+          <div class="chart-wrap" style="height:280px"><canvas id="chartDispFull"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">MTBF — Tempo médio entre falhas (h)</div>
+          <div class="chart-sub">Quanto maior, melhor</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chartMtbf"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">MTTR — Tempo médio de reparo (h)</div>
+          <div class="chart-sub">Quanto menor, mais ágil</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="chartMttr"></canvas></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">Tabela de indicadores</div></div>
+        <div class="tbl-wrap"><table><thead><tr>
+          <th>Placa</th><th>Disponibilidade %</th><th>Status</th><th>MTBF (h)</th><th>MTTR (h)</th><th>Custo total</th>
+        </tr></thead><tbody id="indBody"></tbody></table></div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card full">
+          <div class="chart-title">Evolução de disponibilidade mensal por veículo</div>
+          <div class="chart-sub">Selecione o veículo</div>
+          <select class="filter-select" id="selVeicDisp" onchange="updateDispMensal()" style="margin-bottom:12px"></select>
+          <div class="chart-wrap" style="height:200px"><canvas id="chartDispMensal"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TACÓGRAFOS -->
+    <div id="section-tacografos" class="section">
+      <div class="page-header"><h2>Tacógrafos</h2><p>Controle de certificados · situação e vencimentos</p></div>
+      <div class="kpi-grid" id="tacKpis"></div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Situação dos tacógrafos</div>
+          <div class="table-controls">
+            <select class="filter-select" id="tacSit" onchange="filterTac()"><option value="">Todas as situações</option></select>
+          </div>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr>
+          <th>Placa</th><th>Modelo</th><th>Emissão</th><th>Validade</th><th>Situação</th><th>Observação</th><th>Motorista</th>
+        </tr></thead><tbody id="tacBody"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- PNEUS -->
+    <div id="section-pneus" class="section">
+      <div class="page-header"><h2>Controle de Pneus</h2><p id="pneusSubtitle">Carregando...</p></div>
+      <div class="kpi-grid" id="pneusKpis"></div>
+      <div class="charts-grid">
+        <div class="chart-card"><div class="chart-title">Gasto por veículo (pneus)</div><div class="chart-wrap" style="height:200px"><canvas id="chartPneusVeic"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Gasto por marca</div><div class="chart-wrap" style="height:200px"><canvas id="chartPneusMarca"></canvas></div></div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">Registros de substituição</div></div>
+        <div class="tbl-wrap"><table><thead><tr>
+          <th>Data</th><th>Placa</th><th>Posição</th><th>Marca</th><th>KM Instalação</th><th>Valor</th><th>Status</th><th>Observações</th>
+        </tr></thead><tbody id="pneusBody"></tbody></table></div>
+      </div>
+    </div>
+
+    <!-- ALERTAS -->
+    <div id="section-alertas" class="section">
+      <div class="page-header"><h2>Alertas e Ações Prioritárias</h2><p>Itens críticos detectados automaticamente nos dados da planilha</p></div>
+      <div id="alertasPanel"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// CONFIGURAÇÃO — GOOGLE SHEETS
+// ═══════════════════════════════════════════════════════════════════
+// ── CONFIGURAÇÃO DA PLANILHA ────────────────────────────────────────
+// Suporta dois formatos:
+//   Formato A (edição):    SHEET_ID = '1RKxTFFBk5ejmH...'  → usa gviz/tq (acesso por nome de aba)
+//   Formato B (publicada): SHEET_ID = '2PACX-1v...'        → usa /pub?output=csv (acesso por gid)
+//
+// Para o Formato B, preencha também SHEET_GIDS com o gid numérico de cada aba.
+// Para descobrir o gid: abra a planilha no browser, clique na aba desejada
+// e olhe o parâmetro #gid=XXXXXX na URL.
+//
+// ⚠ Se a planilha for do Formato B (pubhtml), NÃO é possível usar gviz/tq por nome de aba.
+// Use o Formato A: compartilhe a planilha como "Qualquer pessoa com o link → Visualizador"
+// e use o ID da URL de edição (não a URL /e/2PACX-...).
+// ────────────────────────────────────────────────────────────────────
+
+const SHEET_ID = '2PACX-1vQ3SpbFSTh1o4SqpHqTXqjmVg6DhIOD7qeJkV5vir8YOZe-wgcDimdxZsIlgsThG6XuNd_Pk9QtKvgS'; // ID de publicação
+const SHEET_NAMES = ['Manutenções','Cadastro','Indicadores','TACOGRÁFOS','Pneus','Lançamentos'];
+const AUTO_REFRESH_MS = 5 * 60 * 1000; // 5 minutos
+
+// GIDs de cada aba (necessário apenas se SHEET_ID começar com "2PACX-")
+// Formato: { 'NomeAba': gidNumerico }
+// Exemplo: { 'Manutenções': 0, 'Cadastro': 123456789 }
+const SHEET_GIDS = {
+  'Manutenções': 1743694096,
+  'Manutencoes': 1743694096,
+  'Manutenção': 1743694096,
+  'Manutencao': 1743694096,
+  'Cadastro': 1959049377,
+  'Indicadores': 750569242,
+  'TACOGRÁFOS': 1479337917,
+  'TACÓGRAFOS': 1479337917,
+  'Tacógrafos': 1479337917,
+  'Tacografos': 1479337917,
+  'TACOGRAFOS': 1479337917,
+  'Pneus': 1803395273,
+  'pneus': 1803395273,
+  'PNEUS': 1803395273,
+  'Lançamentos': 1879759112,
+  'Lancamentos': 1879759112,
+  'lançamentos': 1879759112,
+  'lancamentos': 1879759112,
+  'LANÇAMENTOS': 1879759112,
+  'Relatório': 835372335,
+  'Relatorio': 835372335,
+  'RELATÓRIO': 835372335,
+  'Combustível': 1605348108,
+  'Combustivel': 1605348108,
+  'COMBUSTÍVEL': 1605348108
+};
+
+function isPubId(id) {
+  return id && id.startsWith('2PACX-');
+}
+
+function sheetUrl(sheetName) {
+  if(isPubId(SHEET_ID)) {
+    // Formato publicado — precisa do gid numérico
+    const gid = SHEET_GIDS[sheetName];
+    if(gid == null) {
+      console.error(`[sheetUrl] GID não configurado para aba "${sheetName}". Preencha SHEET_GIDS.`);
+      // Tenta gid=0 como fallback (primeira aba)
+      return `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub?output=csv&gid=0`;
+    }
+    return `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub?output=csv&gid=${gid}`;
+  }
+  // Formato edição — usa gviz/tq por nome de aba (mais confiável)
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════════════
+let DATA = {};
+let charts = {};
+let manFiltered = [], manPage = 1, manSort = {col:'data', asc:false};
+const manPerPage = 15;
+let autoRefreshTimer = null;
+
+// ═══════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════
+const BRL = v => v != null ? 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : '—';
+const dispColor = d => d >= 95 ? '#1d9e75' : d >= 90 ? '#378add' : d >= 80 ? '#ef9f27' : '#e24b4a';
+const clean = s => (s||'').toString().trim();
+// ── FIX 2: num() robusto — suporte a formatos pt-BR e en-US ─────────
+// O gviz CSV pode entregar valores como:
+//   '1725.42'    → ponto decimal (formato invariante gviz)  OK
+//   '1.725,42'   → milhar ponto + vírgula decimal (pt-BR)   BUG anterior: virava 1.725
+//   '13.376'     → possível milhar sem decimal              BUG: virava 13.376 (errado)
+//   'GARANTIA'   → string de texto não-numérica             BUG: NaN → 0 OK, mas gerava console erros
+//   ''           → vazio                                    OK → 0
+const num = s => {
+  const str = clean(s).replace(/[R$\s]/g,'');
+  if(!str || str === 'GARANTIA' || str === 'N/A' || str === '—') return 0;
+  // Detectar formato: se tem vírgula E ponto, vírgula é decimal (pt-BR milhar)
+  if(str.includes(',') && str.includes('.')) {
+    // Ex: '1.725,42' → remove ponto milhar, troca vírgula por ponto
+    const n = parseFloat(str.replace(/\./g,'').replace(',','.'));
+    return isNaN(n) ? 0 : n;
+  }
+  // Só vírgula → vírgula é decimal (pt-BR sem milhar): '725,42'
+  if(str.includes(',') && !str.includes('.')) {
+    const n = parseFloat(str.replace(',','.'));
+    return isNaN(n) ? 0 : n;
+  }
+  // Só ponto — pode ser decimal gviz ('1725.42') OU milhar pt-BR ('13.376')
+  // Heurística: se há exatamente 3 dígitos após o único ponto → milhar, senão decimal
+  const dotIdx = str.indexOf('.');
+  if(dotIdx !== -1 && str.indexOf('.', dotIdx+1) === -1) {
+    const afterDot = str.length - dotIdx - 1;
+    if(afterDot === 3) {
+      // Trata como separador de milhar pt-BR: '13.376' → 13376
+      const n2 = parseFloat(str.replace('.',''));
+      return isNaN(n2) ? 0 : n2;
+    }
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? 0 : n;
+};
+
+function tipoBadge(t) {
+  t = clean(t).toUpperCase();
+  if(t.includes('PREVENTIVA')) return '<span class="badge bd-success">PREVENTIVA</span>';
+  if(t.includes('EMERGENCIAL')) return '<span class="badge bd-danger">EMERGENCIAL</span>';
+  if(t.includes('PLANEJADA')) return '<span class="badge bd-warning">PLANEJADA</span>';
+  return `<span class="badge bd-gray">${t||'—'}</span>`;
+}
+function tacBadge(s) {
+  s = clean(s).toUpperCase();
+  if(s.includes('VENCIDO')) return '<span class="badge bd-danger">VENCIDO</span>';
+  if(s === 'ATIVO' || s === 'ACTIVE') return '<span class="badge bd-success">ATIVO</span>';
+  if(s.includes('N') || s.includes('APLICA')) return '<span class="badge bd-gray">N/A</span>';
+  return `<span class="badge bd-gray">${s||'—'}</span>`;
+}
+function destroyChart(id) {
+  if(charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+function mkChart(id, config) {
+  destroyChart(id);
+  const ctx = document.getElementById(id);
+  if(!ctx) return;
+  charts[id] = new Chart(ctx.getContext('2d'), config);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LOADER UI
+// ═══════════════════════════════════════════════════════════════════
+function setStep(n, status) { // status: 'active'|'done'|'error'
+  const el = document.getElementById('step'+n);
+  if(!el) return;
+  el.className = 'loader-step ' + status;
+  const icons = {
+    active: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    done: '<polyline points="20 6 9 17 4 12"/>',
+    error: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'
+  };
+  el.querySelector('svg').innerHTML = icons[status] || icons.active;
+}
+function setSyncStatus(type, msg) {
+  const el = document.getElementById('syncStatus');
+  el.className = 'status-chip ' + type;
+  el.innerHTML = `<span class="dot"></span>${msg}`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// FETCH CSV FROM GOOGLE SHEETS
+// ═══════════════════════════════════════════════════════════════════
+// ── FIX 3: fetchSheet com fallback de nome de aba ───────────────────
+// Causa raiz: o nome da aba no Sheets pode ter variação de acento ou
+// ortografia vs o xlsx original. Ex: 'Manutenções' vs 'Manutenções',
+// 'TACOGRÁFOS' vs 'TACÓGRAFOS'. Um 404 ou HTML de login causa
+// DATA.manutencoes = undefined, zerando TODOS os KPIs financeiros.
+async function fetchSheet(sheetName, fallbacks = []) {
+  const namesToTry = [sheetName, ...fallbacks];
+  let lastErr = null;
+
+  // No modo publicado (2PACX-), o acesso é por GID numérico.
+  // Tenta cada nome para encontrar um GID mapeado em SHEET_GIDS.
+  if(isPubId(SHEET_ID)) {
+    for(const name of namesToTry) {
+      const gid = SHEET_GIDS[name];
+      if(gid == null) continue; // sem GID mapeado para este nome, tenta o próximo
+      const url = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID}/pub?output=csv&gid=${gid}`;
+      try {
+        const resp = await fetch(url, {cache: 'no-cache'});
+        if(!resp.ok) { lastErr = new Error(`HTTP ${resp.status} — aba "${name}" (gid=${gid})`); continue; }
+        const text = await resp.text();
+        if(text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+          lastErr = new Error(`GID ${gid} inacessível — confirme que a planilha está publicada (Arquivo → Publicar na Web).`);
+          continue;
+        }
+        const rows = await new Promise((res, rej) => {
+          Papa.parse(text, {
+            header: true, skipEmptyLines: 'greedy',
+            transformHeader: h => h.trim(),
+            complete: r => res(r.data), error: e => rej(e)
+          });
+        });
+        console.log(`✓ Aba "${name}" (gid=${gid}) carregada — ${rows.length} linhas`);
+        return rows;
+      } catch(e) { lastErr = e; }
+    }
+    throw lastErr || new Error(`Nenhum GID encontrado para "${sheetName}". Verifique SHEET_GIDS.`);
+  }
+
+  // Modo edição — acesso por nome de aba via gviz/tq
+  for(const name of namesToTry) {
+    const url = sheetUrl(name);
+    try {
+      const resp = await fetch(url, {cache: 'no-cache'});
+      if(!resp.ok) { lastErr = new Error(`HTTP ${resp.status} — aba "${name}"`); continue; }
+      const text = await resp.text();
+      if(text.trim().startsWith('<') || text.trim().startsWith('<!')) {
+        lastErr = new Error(`Aba "${name}" inacessível. Confirme que a planilha está compartilhada como "Qualquer pessoa com o link → Visualizador".`);
+        continue;
+      }
+      const rows = await new Promise((res, rej) => {
+        Papa.parse(text, {
+          header: true, skipEmptyLines: 'greedy',
+          transformHeader: h => h.trim(),
+          complete: r => res(r.data), error: e => rej(e)
+        });
+      });
+      console.log(`✓ Aba "${name}" carregada — ${rows.length} linhas`);
+      return rows;
+    } catch(e) { lastErr = e; }
+  }
+  throw lastErr || new Error(`Não foi possível carregar a aba "${sheetName}"`);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PARSE SHEETS INTO DOMAIN OBJECTS
+// ═══════════════════════════════════════════════════════════════════
+function parseManutencoes(rows) {
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    // get() — exact match first (case-insensitive), then contains as fallback.
+    // Prevents columns like "Total de Valor" or "Valor Peças" from being picked
+    // before "Valor (R$)" when searching for 'valor'.
+    const normalizeKey = s => s.toLowerCase().replace(/[\s()$]/g, '');
+    const get = (...names) => {
+      // 1st pass: exact match (normalized)
+      for(const n of names){
+        const nNorm = normalizeKey(n);
+        const k = keys.find(k => normalizeKey(k) === nNorm);
+        if(k && r[k] !== undefined && clean(r[k]) !== '') return clean(r[k]);
+      }
+      // 2nd pass: contains fallback
+      for(const n of names){
+        const k = keys.find(k => k.toLowerCase().includes(n.toLowerCase()));
+        if(k && r[k] !== undefined && clean(r[k]) !== '') return clean(r[k]);
+      }
+      return '';
+    };
+
+    // Valor financeiro: busca exata 'Valor (R$)' tem prioridade máxima
+    const valorRaw = get('valor (r$)', 'valor (rs)', 'valor', 'value', 'r$');
+    const valor = num(valorRaw);
+
+    // FIX 5b: busca de data — 'data' captura 'Data' sem conflito
+    const dataRaw = get('data', 'date', 'dt');
+    const dataFmt = formatarData(dataRaw);
+
+    // FIX 5c: normalização de tipo — aceita variações de maiúscula/minúscula
+    const tipoRaw = get('tipo', 'type');
+    const tipoUp = tipoRaw.toUpperCase();
+    const tipoNorm = tipoUp.includes('EMERG') ? 'CORRETIVA EMERGENCIAL'
+      : tipoUp.includes('PLAN') ? 'CORRETIVA PLANEJADA'
+      : tipoUp.includes('PREV') ? 'PREVENTIVA'
+      : tipoRaw || '—';
+
+    return {
+      data: dataFmt,
+      _dataRaw: dataRaw,
+      placa: get('placa', 'plate', 'veiculo', 'veículo'),
+      tipo: tipoNorm,
+      servico: get('descrição do serviço', 'descrição', 'serviço', 'servico', 'descricao', 'description'),
+      km: get('km na ocorrência', 'km na ocor', 'km ocorr', 'km na', 'km'),
+      oficina: get('oficina', 'responsável', 'responsavel', 'workshop'),
+      valor,
+      proxRev: get('próxima revisão', 'próxima', 'proxima', 'next'),
+      obs: get('observações', 'observ', 'obs', 'nota'),
+      _mes: parseMes(dataRaw)
+    };
+  }).filter(r => r.placa && r.placa !== '/' && r.placa.length > 2);
+}
+
+// ── FIX 1: parseMes robusto ─────────────────────────────────────────
+// O gviz/tq?tqx=out:csv do Google Sheets exporta datas no formato:
+//   '10/13/2025 0:00:00'  (M/D/YYYY H:MM:SS) — mais comum
+//   '10/13/2025'          (M/D/YYYY)
+//   '2025-10-13'          (ISO, quando célula tem tipo texto)
+// O parseMes anterior usava regex DD/MM/YYYY que FALHA com hora e com
+// datas de mês de 1 dígito (ex: '2/4/2026'), deixando _mes = '' e
+// zerando todos os gráficos financeiros mensais.
+function parseMes(dataStr) {
+  if(!dataStr || dataStr === 'NaN' || dataStr === '') return '';
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  let d = null;
+
+  // FMT 1: ISO com ou sem hora — '2025-10-13' ou '2025-10-13 00:00:00'
+  const isoMatch = dataStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(isoMatch) {
+    d = new Date(+isoMatch[1], +isoMatch[2]-1, +isoMatch[3]);
+    if(!isNaN(d)) return meses[d.getMonth()] + '/' + String(d.getFullYear()).slice(2);
+  }
+
+  // FMT 2: M/D/YYYY ou MM/DD/YYYY com ou sem hora — padrão gviz pt-BR/en
+  // '10/13/2025 0:00:00' → mês=10, dia=13, ano=2025
+  const slashMatch = dataStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(slashMatch) {
+    const p1 = +slashMatch[1], p2 = +slashMatch[2], yyyy = +slashMatch[3];
+    // Se p2 > 12 → p1=mês, p2=dia (MM/DD/YYYY americano do Sheets)
+    // Se p1 > 12 → p1=dia, p2=mês (DD/MM/YYYY brasileiro)
+    // Se ambos ≤ 12, assumir MM/DD (padrão gviz)
+    let mes, dia;
+    if(p1 > 12)      { dia=p1; mes=p2; } // DD/MM/YYYY — dia inequívoco
+    else if(p2 > 12) { mes=p1; dia=p2; } // MM/DD/YYYY — mês inequívoco
+    else             { dia=p1; mes=p2; } // Ambíguo: assume DD/MM (padrão pt-BR)
+    d = new Date(yyyy, mes-1, dia);
+    if(!isNaN(d)) return meses[d.getMonth()] + '/' + String(d.getFullYear()).slice(2);
+  }
+
+  // FMT 3: fallback Date() nativo
+  d = new Date(dataStr);
+  if(!isNaN(d)) return meses[d.getMonth()] + '/' + String(d.getFullYear()).slice(2);
+  return '';
+}
+
+// ── FIX 1b: formatarData — exibe datas de forma legível ────────────
+function formatarData(dataStr) {
+  if(!dataStr || dataStr === 'NaN') return '—';
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const isoMatch = dataStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(isoMatch) return `${isoMatch[3].padStart(2,'0')}/${isoMatch[2]}/${isoMatch[1]}`;
+  const slashMatch = dataStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(slashMatch) {
+    const p1=+slashMatch[1], p2=+slashMatch[2], yyyy=slashMatch[3];
+    if(p1>12) return `${String(p1).padStart(2,'0')}/${String(p2).padStart(2,'0')}/${yyyy}`;
+    if(p2>12) return `${String(p2).padStart(2,'0')}/${String(p1).padStart(2,'0')}/${yyyy}`;
+    // Ambíguo: assume DD/MM/YYYY (padrão pt-BR)
+    return `${String(p1).padStart(2,'0')}/${String(p2).padStart(2,'0')}/${yyyy}`;
+  }
+  return dataStr.split(' ')[0] || dataStr;
+}
+
+function parseCadastro(rows) {
+  return rows.map((r,i) => {
+    const keys = Object.keys(r);
+    const get = (...names) => {
+      for(const n of names){
+        const k = keys.find(k => k.toLowerCase().includes(n.toLowerCase()));
+        if(k && r[k] !== undefined && clean(r[k]) !== '') return clean(r[k]);
+      }
+      return '';
+    };
+    // FIX 7: coluna real 'Tipo de Combustível' — buscar 'tipo de combustível' antes de 'tipo' para evitar colisão com aba Manutenções
+    // No Cadastro, 'tipo de combustível' é a coluna correta
+    return {
+      n: i+1,
+      placa: get('placa','plate'),
+      modelo: get('modelo','model','veiculo','veículo'),
+      ano: get('ano','year'),
+      km: get('km atual','km atual','km'),
+      comb: get('tipo de combustível','combustível','combustivel','fuel','comb'),
+      motorista: get('motorista responsável','motorista','driver','responsável','responsavel'),
+      situacao: get('situação','situacao','status') || 'Ativo'
+    };
+  }).filter(r => r.placa && r.placa !== '/' && r.placa.length > 2);
+}
+
+function parseIndicadores(rows) {
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    const get = (...names) => { for(const n of names){ const k=keys.find(k=>k.toLowerCase().includes(n.toLowerCase())); if(k&&r[k]!==undefined) return clean(r[k]); } return ''; };
+    const disp = num(get('disponib','dispon'));
+    const mtbf = num(get('mtbf'));
+    const mttr = num(get('mttr'));
+    return {
+      placa: get('placa','plate'),
+      disp: disp || 0,
+      mtbf: mtbf || null,
+      mttr: mttr || null,
+      custo: 0
+    };
+  }).filter(r => r.placa && !r.placa.toUpperCase().includes('MÉDIA'));
+}
+
+function parseTacografos(rows) {
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    const get = (...names) => {
+      for(const n of names){
+        const k = keys.find(k => k.toLowerCase().includes(n.toLowerCase()));
+        if(k && r[k] !== undefined && clean(r[k]) !== '') return clean(r[k]);
+      }
+      return '';
+    };
+    // FIX 6: 'DATA DE EMISSÃO' — incluir 'data de emissão' e 'data de' explicitamente
+    // A coluna real é 'DATA DE EMISSÃO' — o get('emissão') funciona pois 'emissão' ∈ 'data de emissão'
+    const emissaoRaw = get('data de emissão', 'emissão', 'emissao', 'emiss', 'emission');
+    const validadeRaw = get('validade', 'valid', 'vencimento', 'expir');
+    return {
+      placa: get('placa','plate'),
+      modelo: get('modelo','model'),
+      emissao: formatarData(emissaoRaw) || emissaoRaw,
+      validade: formatarData(validadeRaw) || validadeRaw,
+      sit: get('situação','situacao','status','sit'),
+      obs: get('observações','observ','obs','nota','certif'),
+      motorista: get('motorista','driver','responsável','responsavel')
+    };
+  }).filter(r => r.placa && r.placa !== '/');
+}
+
+function parsePneus(rows) {
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    const get = (...names) => { for(const n of names){ const k=keys.find(k=>k.toLowerCase().includes(n.toLowerCase())); if(k&&r[k]!==undefined) return clean(r[k]); } return ''; };
+    return {
+      data: get('data','date'),
+      placa: get('placa','plate'),
+      pos: get('posição','posicao','posit','pos'),
+      marca: get('marca','brand'),
+      km: get('km instalação','km inst','km'),
+      val: num(get('valor','value','R$','rs')),
+      status: get('status','situação','situacao') || 'OK',
+      obs: get('observ','obs')
+    };
+  }).filter(r => r.placa);
+}
+
+function parseLancamentos(rows) {
+  return rows.map(r => {
+    const keys = Object.keys(r);
+    const get = (...names) => { for(const n of names){ const k=keys.find(k=>k.toLowerCase().includes(n.toLowerCase())); if(k&&r[k]!==undefined) return clean(r[k]); } return ''; };
+    const ht = num(get('horas totais','horas total','ht'));
+    const hp = num(get('horas paradas','hp'));
+    const falhas = num(get('falhas','failures'));
+    const disp = ht > 0 ? +((ht - hp) / ht * 100).toFixed(2) : null;
+    return {
+      placa: get('placa','plate'),
+      mes: get('mês','mes','month'),
+      ht, hp, falhas, disp
+    };
+  }).filter(r => r.placa && r.ht > 0);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SYNC (carrega tudo do Sheets)
+// ═══════════════════════════════════════════════════════════════════
+async function syncData(isInit = false) {
+  const syncBtn = document.getElementById('syncBtn');
+  const syncIcon = document.getElementById('syncIcon');
+  syncBtn.disabled = true;
+  syncIcon.classList.add('spinning');
+  setSyncStatus('loading', 'Sincronizando...');
+  hideError();
+
+  if(isInit) document.getElementById('loadingOverlay').classList.remove('hidden');
+
+  const erros = [];
+
+  // ── Manutenções ────────────────────────────────────────────────────
+  // FIX 4a: fallback de nomes com e sem acento, nome alternativo
+  setStep(1,'active');
+  try {
+    const rawMan = await fetchSheet('Manutenções', ['Manutencoes','Manutenção','Manutencao','manutencoes','Manutenções']);
+    DATA.manutencoes = parseManutencoes(rawMan);
+
+    // FIX 4b: diagnóstico financeiro inline — loga se valores são zero
+    const totalVal = DATA.manutencoes.reduce((s,r)=>s+r.valor,0);
+    const semMes   = DATA.manutencoes.filter(r=>!r._mes).length;
+    console.log(`[Manutenções] ${DATA.manutencoes.length} OS | Total R$${totalVal.toFixed(2)} | Sem _mes: ${semMes}`);
+    if(totalVal === 0) console.warn('⚠ Total financeiro ZERO — verifique a coluna "Valor (R$)" no Sheets');
+    // Diagnóstico de soma por veículo — abre no console (F12) para verificar
+    const custoDbg = {};
+    DATA.manutencoes.forEach(r => { const k=normPlaca(r.placa); custoDbg[k]=(custoDbg[k]||0)+r.valor; });
+    console.log('[Custo por veículo]', Object.entries(custoDbg).sort((a,b)=>b[1]-a[1]).map(([p,v])=>`${p}: R$${v.toFixed(2)}`));
+    // Amostra de valorRaw para detectar coluna errada
+    console.log('[Amostra valorRaw]', DATA.manutencoes.slice(0,5).map(r=>({placa:r.placa, valor:r.valor})));
+    if(semMes > DATA.manutencoes.length * 0.3) console.warn(`⚠ ${semMes} registros sem _mes — verifique formato de data no Sheets`);
+    setStep(1,'done');
+  } catch(e) {
+    setStep(1,'error');
+    erros.push(`Manutenções: ${e.message}`);
+    DATA.manutencoes = DATA.manutencoes || [];
+  }
+
+  // ── Cadastro ────────────────────────────────────────────────────────
+  setStep(2,'active');
+  try {
+    const rawCad = await fetchSheet('Cadastro', ['cadastro','CADASTRO']);
+    DATA.cadastro = parseCadastro(rawCad);
+    setStep(2,'done');
+  } catch(e) {
+    setStep(2,'error');
+    erros.push(`Cadastro: ${e.message}`);
+    DATA.cadastro = DATA.cadastro || [];
+  }
+
+  // ── Indicadores ─────────────────────────────────────────────────────
+  setStep(3,'active');
+  try {
+    const rawInd = await fetchSheet('Indicadores', ['indicadores','INDICADORES']);
+    DATA.indicadores = parseIndicadores(rawInd);
+    // FIX 4c: cruzamento de custo por placa — usa normPlaca para tolerar diferenças de formato
+    const custoMap = {};
+    (DATA.manutencoes||[]).forEach(r => {
+      const k = normPlaca(r.placa);
+      custoMap[k] = (custoMap[k]||0) + r.valor;
+    });
+    DATA.indicadores.forEach(r => {
+      r.custo = custoMap[normPlaca(r.placa)] || 0;
+    });
+    setStep(3,'done');
+  } catch(e) {
+    setStep(3,'error');
+    erros.push(`Indicadores: ${e.message}`);
+    DATA.indicadores = DATA.indicadores || [];
+  }
+
+  // ── Tacógrafos ───────────────────────────────────────────────────────
+  // FIX 4d: fallback para variações de ortografia (TACOGRÁFOS / TACÓGRAFOS)
+  setStep(4,'active');
+  try {
+    const rawTac = await fetchSheet('TACOGRÁFOS', ['TACÓGRAFOS','Tacógrafos','Tacografos','TACOGRAFOS','tacografos']);
+    DATA.tacografos = parseTacografos(rawTac);
+    setStep(4,'done');
+  } catch(e) {
+    setStep(4,'error');
+    erros.push(`Tacógrafos: ${e.message}`);
+    DATA.tacografos = DATA.tacografos || [];
+  }
+
+  // ── Lançamentos + Pneus ──────────────────────────────────────────────
+  setStep(5,'active');
+  try {
+    const rawLanc = await fetchSheet('Lançamentos', ['Lancamentos','lançamentos','lancamentos','LANÇAMENTOS']);
+    DATA.lancamentos = parseLancamentos(rawLanc);
+    setStep(5,'done');
+  } catch(e) {
+    setStep(5,'error');
+    erros.push(`Lançamentos: ${e.message}`);
+    DATA.lancamentos = DATA.lancamentos || [];
+  }
+  try {
+    const rawPneu = await fetchSheet('Pneus', ['pneus','PNEUS']);
+    DATA.pneus = parsePneus(rawPneu);
+  } catch(e) {
+    DATA.pneus = DATA.pneus || [];
+  }
+
+  // ── Finalizar ────────────────────────────────────────────────────────
+  const now = new Date();
+  const fmtDate = now.toLocaleDateString('pt-BR');
+  const fmtTime = now.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('lastSync').textContent = `Atualizado: ${fmtDate} ${fmtTime}`;
+  document.getElementById('sidebarFooter').textContent = `${fmtDate} ${fmtTime} · ${(DATA.manutencoes||[]).length} OS`;
+
+  if(erros.length > 0 && !(DATA.manutencoes||[]).length) {
+    // Falha total
+    setSyncStatus('err', 'Erro de conexão');
+    showError(erros[0] + (erros.length > 1 ? ` (+${erros.length-1} erros)` : ''));
+  } else if(erros.length > 0) {
+    // Falha parcial — dados principais OK, algumas abas com erro
+    setSyncStatus('ok', 'Parcial');
+    console.warn('Erros parciais na sincronização:', erros);
+    showError('Algumas abas não carregaram: ' + erros.join(' | ') + ' — Os dados disponíveis foram carregados normalmente.');
+  } else {
+    setSyncStatus('ok', 'Sincronizado');
+    hideError();
+  }
+
+  // Rebuild UI com o que foi carregado
+  buildAll();
+
+  syncBtn.disabled = false;
+  syncIcon.classList.remove('spinning');
+  if(isInit) setTimeout(() => document.getElementById('loadingOverlay').classList.add('hidden'), 600);
+
+  // Auto refresh
+  if(autoRefreshTimer) clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = setTimeout(() => syncData(), AUTO_REFRESH_MS);
+}
+
+function normPlaca(p) { return (p||'').replace(/[\s\-]/g,'').toUpperCase(); }
+
+// ── FIX 8: Diagnóstico financeiro pós-carga ──────────────────────────
+// Chamado após buildAll() para alertar sobre dados zerados
+function diagnosticoFinanceiro() {
+  const mans = DATA.manutencoes || [];
+  const totalCusto = mans.reduce((s,r)=>s+r.valor,0);
+  const semMes = mans.filter(r=>!r._mes).length;
+  const semValor = mans.filter(r=>r.valor===0).length;
+
+  console.group('📊 Diagnóstico Financeiro');
+  console.log(`Total de OS: ${mans.length}`);
+  console.log(`Custo total: R$ ${totalCusto.toFixed(2)}`);
+  console.log(`OS sem _mes (data não parseada): ${semMes} / ${mans.length}`);
+  console.log(`OS com valor = R$0: ${semValor} / ${mans.length}`);
+  if(mans.length > 0) {
+    console.log('Amostra de 3 registros:', mans.slice(0,3).map(r=>({placa:r.placa,valor:r.valor,_mes:r._mes,data:r._dataRaw})));
+  }
+  const meses = getCustoMes();
+  console.log(`Meses únicos no gráfico: ${meses.length}`, meses.map(m=>m.mes));
+  console.groupEnd();
+
+  // Alerta visual se dados financeiros vazios mas há registros
+  if(mans.length > 0 && totalCusto === 0) {
+    showError('⚠ Dados carregados mas valores financeiros zerados. Possível causa: coluna "Valor (R$)" com formato incompatível no Sheets. Abra o console (F12) para diagnóstico.');
+  } else if(mans.length > 0 && semMes > mans.length * 0.5) {
+    showError('⚠ Mais de 50% das datas não foram interpretadas — gráfico mensal pode estar incompleto. Verifique o formato de data na aba Manutenções do Sheets.');
+  }
+}
+
+
+function showError(msg) {
+  document.getElementById('errorBanner').classList.add('show');
+  document.getElementById('errDesc').textContent = msg;
+}
+function hideError() {
+  document.getElementById('errorBanner').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILD ALL (recria todos os componentes com dados novos)
+// ═══════════════════════════════════════════════════════════════════
+function buildAll() {
+  buildDashboard();
+  buildManutencoes();
+  buildFrota();
+  buildIndicadores();
+  buildTacografos();
+  buildPneus();
+  buildAlertas();
+  updateTopbar();
+  diagnosticoFinanceiro(); // FIX 8: diagnóstico automático pós-carga
+}
+
+function updateTopbar() {
+  const total = DATA.manutencoes ? DATA.manutencoes.length : 0;
+  const veic = DATA.cadastro ? DATA.cadastro.length : 0;
+  document.getElementById('topbarSub').textContent = `${veic} veículos · ${total} OS`;
+  const vencidos = DATA.tacografos ? DATA.tacografos.filter(r => normSit(r.sit) === 'VENCIDO').length : 0;
+  document.getElementById('alertBadge').textContent = `⚠ ${vencidos > 0 ? vencidos + ' alertas críticos' : 'Alertas'}`;
+}
+function normSit(s) { return clean(s).toUpperCase(); }
+
+// ═══════════════════════════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════════════════════════
+const titles = {dashboard:'Dashboard Executivo',manutencoes:'Manutenções',frota:'Frota / Cadastro',indicadores:'Indicadores de Confiabilidade',tacografos:'Tacógrafos',pneus:'Pneus',alertas:'Alertas'};
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('section-'+id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>{ if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes(id)) n.classList.add('active'); });
+  document.getElementById('topbar-title').textContent = titles[id]||id;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DERIVED DATA HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function getCustoMes() {
+  const map = {};
+  const order = [];
+  (DATA.manutencoes||[]).forEach(r => {
+    const m = r._mes;
+    if(!m) return; // ignora registros sem mês válido (data não parseada)
+    if(!map[m]) { map[m]=0; order.push(m); }
+    map[m] += r.valor;
+  });
+  // Sort by attempting to parse the month label
+  const mesIdx = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  order.sort((a,b)=>{
+    const pa = a.split('/'); const pb = b.split('/');
+    const ya=parseInt(pa[1]||0), yb=parseInt(pb[1]||0);
+    if(ya!==yb) return ya-yb;
+    return mesIdx.indexOf(pa[0]) - mesIdx.indexOf(pb[0]);
+  });
+  return order.map(m=>({mes:m, val:map[m]}));
+}
+
+function getCustoVeiculo() {
+  const map = {};
+  const labelMap = {}; // guarda a forma original da placa para exibição
+  (DATA.manutencoes||[]).forEach(r => {
+    const k = normPlaca(r.placa); // normaliza para evitar duplicatas por espaço/hífen/caixa
+    if(!labelMap[k]) labelMap[k] = r.placa; // mantém o label original (primeira ocorrência)
+    map[k] = (map[k]||0) + r.valor;
+  });
+  return Object.entries(map).map(([k,v])=>({placa:labelMap[k]||k, val:v})).sort((a,b)=>b.val-a.val);
+}
+
+function getCustoTipo() {
+  const map = {};
+  (DATA.manutencoes||[]).forEach(r => {
+    const t = r.tipo || '—';
+    map[t] = (map[t]||0) + r.valor;
+  });
+  return Object.entries(map).map(([t,v])=>({tipo:t,val:v})).sort((a,b)=>b.val-a.val);
+}
+
+function getOficinas() {
+  const map = {};
+  (DATA.manutencoes||[]).forEach(r => {
+    const o = r.oficina || '—';
+    map[o] = (map[o]||0) + r.valor;
+  });
+  return Object.entries(map).map(([n,v])=>({nome:n,val:v})).sort((a,b)=>b.val-a.val).slice(0,10);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════
+function buildDashboard() {
+  const mans = DATA.manutencoes || [];
+  const totalCusto = mans.reduce((s,r)=>s+r.valor,0);
+  const custoMes = getCustoMes();
+  const mediaM = custoMes.length ? totalCusto / custoMes.length : 0;
+  const emerg = mans.filter(r=>r.tipo.includes('EMERGENCIAL')).length;
+  const pctEmerg = mans.length ? Math.round(emerg/mans.length*100) : 0;
+  const indMed = DATA.indicadores || [];
+  const dispMedia = indMed.length ? (indMed.reduce((s,r)=>s+r.disp,0)/indMed.length).toFixed(1) : '—';
+  const vencidos = (DATA.tacografos||[]).filter(r=>normSit(r.sit).includes('VENCIDO')).length;
+  const totalPneus = (DATA.pneus||[]).reduce((s,r)=>s+r.val,0);
+
+  document.getElementById('dashSubtitle').textContent = `${mans.length} ordens de serviço · ${custoMes.length} meses`;
+  document.getElementById('dashKpis').innerHTML = `
+    <div class="kpi-card danger"><div class="kpi-label">Custo total</div><div class="kpi-value">${fmtK(totalCusto)}</div><div class="kpi-sub">${mans.length} ordens de serviço</div><div class="kpi-icon">💰</div></div>
+    <div class="kpi-card"><div class="kpi-label">Média mensal</div><div class="kpi-value">${fmtK(mediaM)}</div><div class="kpi-sub">${custoMes.length} meses de dados</div><div class="kpi-icon">📅</div></div>
+    <div class="kpi-card warning"><div class="kpi-label">Corretiva emergencial</div><div class="kpi-value">${pctEmerg}%</div><div class="kpi-sub">${emerg} de ${mans.length} OS</div><div class="kpi-icon">🔧</div></div>
+    <div class="kpi-card success"><div class="kpi-label">Disponibilidade média</div><div class="kpi-value">${dispMedia}%</div><div class="kpi-sub">Frota geral</div><div class="kpi-icon">✅</div></div>
+    <div class="kpi-card ${vencidos>0?'danger':''}"><div class="kpi-label">Tacógrafos vencidos</div><div class="kpi-value">${vencidos}</div><div class="kpi-sub">Risco legal imediato</div><div class="kpi-icon">⏱</div></div>
+    <div class="kpi-card"><div class="kpi-label">Pneus (período)</div><div class="kpi-value">${fmtK(totalPneus)}</div><div class="kpi-sub">${(DATA.pneus||[]).length} eventos</div><div class="kpi-icon">🛞</div></div>
+  `;
+
+  // Custo mensal chart
+  const pico = Math.max(...custoMes.map(r=>r.val));
+  mkChart('chartMes', {type:'bar', data:{
+    labels: custoMes.map(r=>r.mes),
+    datasets:[{label:'Custo R$', data:custoMes.map(r=>r.val), backgroundColor:custoMes.map(r=>r.val===pico?'#e24b4a':r.val>pico*.75?'#ef9f27':'#378add'), borderRadius:5, borderSkipped:false}]
+  }, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:11}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:11},callback:v=>'R$'+Math.round(v/1000)+'k'}}}}});
+
+  // Tipo doughnut
+  const tipoData = getCustoTipo();
+  const tipoCores = ['#e24b4a','#ef9f27','#1d9e75','#378add','#8e44ad','#5a6282'];
+  const tipoTotal = tipoData.reduce((s,r)=>s+r.val,0);
+  document.getElementById('legendTipo').innerHTML = tipoData.map((r,i)=>`<span class="ld"><span class="ld-dot" style="background:${tipoCores[i%tipoCores.length]}"></span>${r.tipo} (${tipoTotal?Math.round(r.val/tipoTotal*100):0}%)</span>`).join('');
+  mkChart('chartTipo', {type:'doughnut', data:{
+    labels:tipoData.map(r=>r.tipo),
+    datasets:[{data:tipoData.map(r=>r.val), backgroundColor:tipoCores.slice(0,tipoData.length), borderWidth:2, borderColor:'#fff'}]
+  }, options:{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}}}});
+
+  // Veículos bar
+  const topVeic = getCustoVeiculo().slice(0,10);
+  const maxV = topVeic[0]?.val||1;
+  mkChart('chartVeiculos', {type:'bar', data:{
+    labels:topVeic.map(r=>r.placa),
+    datasets:[{label:'Custo', data:topVeic.map(r=>r.val), backgroundColor:topVeic.map(r=>r.val>maxV*.8?'#e24b4a':r.val>maxV*.5?'#ef9f27':'#378add'), borderRadius:4}]
+  }, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10},callback:v=>'R$'+Math.round(v/1000)+'k'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+  // Disponib mini bars
+  const sortedDisp = [...(DATA.indicadores||[])].sort((a,b)=>a.disp-b.disp).slice(0,12);
+  document.getElementById('dispBars').innerHTML = sortedDisp.map(r=>`
+    <div class="disp-row">
+      <span class="disp-lbl">${r.placa}</span>
+      <div class="prog-bg"><div class="prog-fill" style="width:${Math.min(r.disp,100)}%;background:${dispColor(r.disp)}"></div></div>
+      <span class="disp-val">${r.disp.toFixed(1)}%</span>
+    </div>`).join('');
+
+  // Oficinas bars
+  const oficinas = getOficinas();
+  const maxOf = oficinas[0]?.val||1;
+  document.getElementById('oficinaBars').innerHTML = oficinas.map(r=>`
+    <div class="disp-row">
+      <span class="disp-lbl" style="width:130px">${r.nome}</span>
+      <div class="prog-bg"><div class="prog-fill" style="width:${(r.val/maxOf*100).toFixed(0)}%;background:#378add"></div></div>
+      <span class="disp-val" style="width:58px">${fmtK(r.val)}</span>
+    </div>`).join('');
+}
+
+function fmtK(v) {
+  if(v >= 1000) return 'R$' + (v/1000).toFixed(1) + 'k';
+  return 'R$' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MANUTENÇÕES
+// ═══════════════════════════════════════════════════════════════════
+function buildManutencoes() {
+  const mans = DATA.manutencoes || [];
+  document.getElementById('manSubtitle').textContent = `${mans.length} ordens de serviço · ${[...new Set(mans.map(r=>r._mes))].filter(Boolean).length} meses`;
+
+  // Rebuild filters
+  const tipos = [...new Set(mans.map(r=>r.tipo).filter(Boolean))].sort();
+  document.getElementById('manTipo').innerHTML = '<option value="">Todos os tipos</option>' + tipos.map(t=>`<option>${t}</option>`).join('');
+  const placas = [...new Set(mans.map(r=>r.placa).filter(Boolean))].sort();
+  document.getElementById('manPlaca').innerHTML = '<option value="">Todas as placas</option>' + placas.map(p=>`<option>${p}</option>`).join('');
+  const meses = [...new Set(mans.map(r=>r._mes).filter(Boolean))];
+  document.getElementById('manMes').innerHTML = '<option value="">Todos os meses</option>' + meses.map(m=>`<option>${m}</option>`).join('');
+
+  // Mini charts
+  const tipoQtd = {};
+  const tipoCusto = {};
+  mans.forEach(r => { tipoQtd[r.tipo]=(tipoQtd[r.tipo]||0)+1; tipoCusto[r.tipo]=(tipoCusto[r.tipo]||0)+r.valor; });
+  const tipoCols = ['#e24b4a','#ef9f27','#1d9e75','#378add'];
+  const tkKeys = Object.keys(tipoQtd);
+  mkChart('chartTipoQtd', {type:'doughnut', data:{labels:tkKeys, datasets:[{data:tkKeys.map(k=>tipoQtd[k]), backgroundColor:tipoCols.slice(0,tkKeys.length), borderWidth:2, borderColor:'#fff'}]}, options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+' OS'}}}}});
+  mkChart('chartTipoCusto', {type:'doughnut', data:{labels:tkKeys, datasets:[{data:tkKeys.map(k=>tipoCusto[k]), backgroundColor:tipoCols.slice(0,tkKeys.length), borderWidth:2, borderColor:'#fff'}]}, options:{responsive:true,maintainAspectRatio:false,cutout:'55%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}}}});
+  const cm = getCustoMes();
+  mkChart('chartMiniMes', {type:'line', data:{labels:cm.map(r=>r.mes.slice(0,3)), datasets:[{data:cm.map(r=>r.val), borderColor:'#378add', backgroundColor:'rgba(55,138,221,.1)', fill:true, tension:.4, pointRadius:3, pointBackgroundColor:'#378add'}]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:9},callback:v=>'R$'+Math.round(v/1000)+'k'}}}}});
+
+  filterMan();
+}
+
+function filterMan() {
+  const mans = DATA.manutencoes || [];
+  const q = document.getElementById('manSearch').value.toLowerCase();
+  const tipo = clean(document.getElementById('manTipo').value);
+  const placa = document.getElementById('manPlaca').value;
+  const mes = document.getElementById('manMes').value;
+  manFiltered = mans.filter(r => {
+    if(tipo && !r.tipo.includes(tipo)) return false;
+    if(placa && r.placa !== placa) return false;
+    if(mes && r._mes !== mes) return false;
+    if(q && !(r.placa+r.tipo+r.oficina+r.servico).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  sortManData();
+}
+function sortMan(col) { manSort = {col, asc: manSort.col===col ? !manSort.asc : true}; sortManData(); }
+function sortManData() {
+  manFiltered.sort((a,b) => {
+    let va=a[manSort.col], vb=b[manSort.col];
+    if(manSort.col==='valor'){va=+va||0;vb=+vb||0;}
+    if(va<vb) return manSort.asc?-1:1;
+    if(va>vb) return manSort.asc?1:-1;
+    return 0;
+  });
+  manPage=1; renderMan();
+}
+function renderMan() {
+  const total=manFiltered.length;
+  const pages=Math.max(1,Math.ceil(total/manPerPage));
+  manPage=Math.min(manPage,pages);
+  const slice=manFiltered.slice((manPage-1)*manPerPage, manPage*manPerPage);
+  document.getElementById('manCount').textContent = total+' registros · '+BRL(manFiltered.reduce((s,r)=>s+(+r.valor||0),0));
+  document.getElementById('manBody').innerHTML = slice.map(r=>`<tr>
+    <td>${r.data||'—'}</td>
+    <td style="font-weight:600">${r.placa}</td>
+    <td>${tipoBadge(r.tipo)}</td>
+    <td title="${r.servico}" style="max-width:260px">${(r.servico||'').length>70?(r.servico.slice(0,67)+'…'):r.servico||'—'}</td>
+    <td>${r.oficina||'—'}</td>
+    <td style="text-align:right;font-weight:600">${BRL(r.valor)}</td>
+  </tr>`).join('');
+  let pag='';
+  if(pages>1) {
+    pag+=`<button class="page-btn${manPage===1?' active':''}" onclick="goManPage(1)">1</button>`;
+    if(manPage>3) pag+='<span style="padding:4px 6px;font-size:12px;color:var(--text3)">…</span>';
+    for(let i=Math.max(2,manPage-1);i<=Math.min(pages-1,manPage+1);i++) pag+=`<button class="page-btn${manPage===i?' active':''}" onclick="goManPage(${i})">${i}</button>`;
+    if(manPage<pages-2) pag+='<span style="padding:4px 6px;font-size:12px;color:var(--text3)">…</span>';
+    if(pages>1) pag+=`<button class="page-btn${manPage===pages?' active':''}" onclick="goManPage(${pages})">${pages}</button>`;
+  }
+  document.getElementById('manPag').innerHTML=pag;
+}
+function goManPage(p) { manPage=p; renderMan(); }
+
+// ═══════════════════════════════════════════════════════════════════
+// FROTA
+// ═══════════════════════════════════════════════════════════════════
+let frotaFiltered = [];
+function buildFrota() {
+  const rows = DATA.cadastro || [];
+  document.getElementById('frotaSubtitle').textContent = `${rows.length} veículos ativos`;
+  const combs = [...new Set(rows.map(r=>r.comb).filter(Boolean))].sort();
+  document.getElementById('frotaComb').innerHTML = '<option value="">Todos os combustíveis</option>' + combs.map(c=>`<option>${c}</option>`).join('');
+  frotaFiltered = [...rows];
+  renderFrota();
+}
+function filterFrota() {
+  const q = document.getElementById('frotaSearch').value.toLowerCase();
+  const comb = document.getElementById('frotaComb').value;
+  frotaFiltered = (DATA.cadastro||[]).filter(r => {
+    if(comb && r.comb !== comb) return false;
+    if(q && !(r.placa+r.modelo+r.motorista).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderFrota();
+}
+function renderFrota() {
+  document.getElementById('frotaCount').textContent = frotaFiltered.length+' veículos';
+  const custoMap = {};
+  (DATA.manutencoes||[]).forEach(r => { const k=normPlaca(r.placa); custoMap[k]=(custoMap[k]||0)+r.valor; });
+  document.getElementById('frotaBody').innerHTML = frotaFiltered.map(r => {
+    const custo = custoMap[normPlaca(r.placa)];
+    return `<tr>
+      <td>${r.n}</td>
+      <td style="font-weight:600">${r.placa}</td>
+      <td>${r.modelo}</td>
+      <td>${r.ano}</td>
+      <td>${r.km ? r.km : '—'}</td>
+      <td><span class="badge bd-info">${r.comb||'—'}</span></td>
+      <td>${r.motorista||'—'}</td>
+      <td><span class="badge bd-success">Ativo</span></td>
+      <td style="font-weight:600">${custo!=null ? BRL(custo) : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INDICADORES
+// ═══════════════════════════════════════════════════════════════════
+function buildIndicadores() {
+  const rows = DATA.indicadores || [];
+  const dispMedia = rows.length ? (rows.reduce((s,r)=>s+r.disp,0)/rows.length).toFixed(1) : '—';
+  const piorDisp = rows.reduce((min,r)=>r.disp<min.disp?r:min, rows[0]||{disp:100,placa:'—'});
+  const maiorMtbf = rows.filter(r=>r.mtbf).reduce((max,r)=>r.mtbf>max.mtbf?r:max, {mtbf:0,placa:'—'});
+  const maiorMttr = rows.filter(r=>r.mttr).reduce((max,r)=>r.mttr>max.mttr?r:max, {mttr:0,placa:'—'});
+  document.getElementById('indKpis').innerHTML = `
+    <div class="kpi-card success"><div class="kpi-label">Disponibilidade média</div><div class="kpi-value">${dispMedia}%</div><div class="kpi-sub">Frota geral</div></div>
+    <div class="kpi-card danger"><div class="kpi-label">Menor disponibilidade</div><div class="kpi-value">${piorDisp.disp?.toFixed(1)||'—'}%</div><div class="kpi-sub">${piorDisp.placa}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Maior MTBF</div><div class="kpi-value">${maiorMtbf.mtbf||'—'}h</div><div class="kpi-sub">${maiorMtbf.placa}</div></div>
+    <div class="kpi-card warning"><div class="kpi-label">Maior MTTR</div><div class="kpi-value">${maiorMttr.mttr||'—'}h</div><div class="kpi-sub">${maiorMttr.placa}</div></div>
+  `;
+
+  mkChart('chartDispFull', {type:'bar', data:{
+    labels:rows.map(r=>r.placa),
+    datasets:[{label:'Disponibilidade %', data:rows.map(r=>r.disp), backgroundColor:rows.map(r=>dispColor(r.disp)), borderRadius:4}]
+  }, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw.toFixed(2)+'%'}}},scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{min:50,max:105,grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10},callback:v=>v+'%'}}}}});
+
+  const mtbfRows = rows.filter(r=>r.mtbf);
+  mkChart('chartMtbf', {type:'bar', data:{
+    labels:mtbfRows.map(r=>r.placa),
+    datasets:[{data:mtbfRows.map(r=>r.mtbf), backgroundColor:'#378add', borderRadius:4}]
+  }, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+'h'}}},scales:{x:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10},callback:v=>v+'h'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+  const mttrRows = rows.filter(r=>r.mttr);
+  mkChart('chartMttr', {type:'bar', data:{
+    labels:mttrRows.map(r=>r.placa),
+    datasets:[{data:mttrRows.map(r=>r.mttr), backgroundColor:mttrRows.map(r=>r.mttr>15?'#e24b4a':r.mttr>10?'#ef9f27':'#1d9e75'), borderRadius:4}]
+  }, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.raw+'h'}}},scales:{x:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10},callback:v=>v+'h'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}});
+
+  document.getElementById('indBody').innerHTML = rows.map(r => {
+    const st = r.disp>=95?'<span class="badge bd-success">OK</span>':r.disp>=90?'<span class="badge bd-info">ATENÇÃO</span>':'<span class="badge bd-danger">CRÍTICO</span>';
+    return `<tr>
+      <td style="font-weight:600">${r.placa}</td>
+      <td><div class="prog-wrap"><div class="prog-bg"><div class="prog-fill" style="width:${r.disp}%;background:${dispColor(r.disp)}"></div></div><span class="prog-val">${r.disp.toFixed(1)}%</span></div></td>
+      <td>${st}</td>
+      <td>${r.mtbf!=null?r.mtbf+'h':'—'}</td>
+      <td>${r.mttr!=null?r.mttr+'h':'—'}</td>
+      <td style="font-weight:600">${BRL(r.custo)}</td>
+    </tr>`;
+  }).join('');
+
+  // Disponib mensal selector
+  const veics = [...new Set((DATA.lancamentos||[]).map(r=>r.placa))].sort();
+  document.getElementById('selVeicDisp').innerHTML = veics.map(p=>`<option>${p}</option>`).join('');
+  updateDispMensal();
+}
+
+function updateDispMensal() {
+  const placa = document.getElementById('selVeicDisp').value;
+  const rows = (DATA.lancamentos||[]).filter(r=>r.placa===placa);
+  const meses = [...new Set(rows.map(r=>r.mes))];
+  const vals = meses.map(m=>{const r=rows.find(x=>x.mes===m);return r?r.disp:null;});
+  mkChart('chartDispMensal', {type:'line', data:{labels:meses, datasets:[
+    {label:'Disponibilidade %', data:vals, borderColor:'#3b6ef5', backgroundColor:'rgba(59,110,245,.1)', fill:true, tension:.3, pointRadius:5, pointBackgroundColor:'#3b6ef5', spanGaps:true},
+    {label:'Meta 95%', data:meses.map(()=>95), borderColor:'#e24b4a', borderWidth:1.5, borderDash:[5,5], pointRadius:0, fill:false}
+  ]}, options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{font:{size:11}}}},scales:{x:{grid:{display:false}},y:{min:50,max:105,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:v=>v+'%'}}}}});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TACÓGRAFOS
+// ═══════════════════════════════════════════════════════════════════
+function buildTacografos() {
+  const rows = DATA.tacografos || [];
+  const ativos = rows.filter(r=>normSit(r.sit)==='ATIVO').length;
+  const vencidos = rows.filter(r=>normSit(r.sit).includes('VENCIDO')).length;
+  const na = rows.filter(r=>normSit(r.sit).includes('APLICA')||normSit(r.sit).includes('N/A')).length;
+  document.getElementById('tacKpis').innerHTML = `
+    <div class="kpi-card success"><div class="kpi-label">Ativos / Válidos</div><div class="kpi-value">${ativos}</div><div class="kpi-sub">Com certificado em vigor</div></div>
+    <div class="kpi-card ${vencidos>0?'danger':''}"><div class="kpi-label">Vencidos</div><div class="kpi-value">${vencidos}</div><div class="kpi-sub">${vencidos>0?rows.filter(r=>normSit(r.sit).includes('VENCIDO')).map(r=>r.placa).join(', '):'Nenhum'}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Não se aplica</div><div class="kpi-value">${na}</div><div class="kpi-sub">Veículos leves/flex</div></div>
+  `;
+  const sits = [...new Set(rows.map(r=>r.sit).filter(Boolean))].sort();
+  document.getElementById('tacSit').innerHTML = '<option value="">Todas as situações</option>' + sits.map(s=>`<option>${s}</option>`).join('');
+  renderTac();
+}
+function filterTac() { renderTac(); }
+function renderTac() {
+  const sit = document.getElementById('tacSit').value;
+  const rows = (DATA.tacografos||[]).filter(r=>!sit||r.sit===sit);
+  document.getElementById('tacBody').innerHTML = rows.map(r=>`<tr>
+    <td style="font-weight:600">${r.placa}</td>
+    <td>${r.modelo}</td>
+    <td>${r.emissao||'—'}</td>
+    <td style="font-weight:600;color:${normSit(r.sit).includes('VENCIDO')?'#c0392b':'inherit'}">${r.validade||'—'}</td>
+    <td>${tacBadge(r.sit)}</td>
+    <td style="font-size:11px;color:var(--text2)">${r.obs||'—'}</td>
+    <td>${r.motorista||'—'}</td>
+  </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PNEUS
+// ═══════════════════════════════════════════════════════════════════
+function buildPneus() {
+  const rows = DATA.pneus || [];
+  const total = rows.reduce((s,r)=>s+r.val,0);
+  const ticket = rows.length ? total/rows.length : 0;
+  document.getElementById('pneusSubtitle').textContent = `${rows.length} eventos de substituição registrados`;
+  document.getElementById('pneusKpis').innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Total investido</div><div class="kpi-value">${fmtK(total)}</div><div class="kpi-sub">No período</div></div>
+    <div class="kpi-card"><div class="kpi-label">Ticket médio</div><div class="kpi-value">${fmtK(ticket)}</div><div class="kpi-sub">Por evento</div></div>
+    <div class="kpi-card success"><div class="kpi-label">Eventos</div><div class="kpi-value">${rows.length}</div><div class="kpi-sub">Substituições realizadas</div></div>
+  `;
+  const byVeic = {};
+  rows.forEach(r=>{ byVeic[r.placa]=(byVeic[r.placa]||0)+r.val; });
+  const byMarca = {};
+  rows.forEach(r=>{ const m=(r.marca||'—').trim()||'—'; byMarca[m]=(byMarca[m]||0)+r.val; });
+  const cores = ['#378add','#1d9e75','#ef9f27','#e24b4a','#8e44ad','#5a6282'];
+  mkChart('chartPneusVeic', {type:'bar', data:{labels:Object.keys(byVeic), datasets:[{data:Object.values(byVeic), backgroundColor:'#378add', borderRadius:4}]}, options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>BRL(c.raw)}}},scales:{x:{grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10},callback:v=>'R$'+Math.round(v/1000)+'k'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}});
+  const mks = Object.keys(byMarca);
+  mkChart('chartPneusMarca', {type:'doughnut', data:{labels:mks, datasets:[{data:mks.map(k=>byMarca[k]), backgroundColor:cores.slice(0,mks.length), borderWidth:2, borderColor:'#fff'}]}, options:{responsive:true,maintainAspectRatio:false,cutout:'50%',plugins:{legend:{labels:{font:{size:11}}},tooltip:{callbacks:{label:c=>BRL(c.raw)}}}}});
+  document.getElementById('pneusBody').innerHTML = rows.map(r=>`<tr>
+    <td>${r.data||'—'}</td>
+    <td style="font-weight:600">${r.placa}</td>
+    <td>${r.pos||'—'}</td>
+    <td>${r.marca||'—'}</td>
+    <td>${r.km||'—'}</td>
+    <td style="font-weight:600">${BRL(r.val)}</td>
+    <td><span class="badge bd-success">${(r.status||'OK').toUpperCase()}</span></td>
+    <td style="font-size:11px">${r.obs||'—'}</td>
+  </tr>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ALERTAS (gerados dinamicamente pelos dados)
+// ═══════════════════════════════════════════════════════════════════
+function buildAlertas() {
+  const mans = DATA.manutencoes || [];
+  const alertas = [];
+
+  // Tacógrafos vencidos
+  (DATA.tacografos||[]).filter(r=>normSit(r.sit).includes('VENCIDO')).forEach(r => {
+    alertas.push({nivel:'crit', icon:'⚠️', titulo:`${r.placa} — Tacógrafo VENCIDO (${r.validade||'?'})`, desc:`Motorista: ${r.motorista||'—'}. Certificado vencido. Veículo em circulação representa risco legal, multas e apreensão. Ação imediata obrigatória.`});
+  });
+
+  // Veículo com maior custo
+  const custoVeic = getCustoVeiculo();
+  if(custoVeic.length > 0) {
+    const top = custoVeic[0];
+    alertas.push({nivel:'crit', icon:'🚨', titulo:`${top.placa} — Maior custo da frota: ${BRL(top.val)}`, desc:`Veículo concentra o maior volume de gastos no período. Analisar histórico de falhas recorrentes e avaliar viabilidade de manutenção contínua vs substituição.`});
+  }
+
+  // Veículo com menor disponibilidade
+  const indRows = DATA.indicadores || [];
+  const pior = [...indRows].sort((a,b)=>a.disp-b.disp)[0];
+  if(pior && pior.disp < 90) {
+    alertas.push({nivel:'crit', icon:'🚨', titulo:`${pior.placa} — Disponibilidade crítica: ${pior.disp.toFixed(1)}%`, desc:`MTBF: ${pior.mtbf||'—'}h · MTTR: ${pior.mttr||'—'}h. Veículo com maior número de horas paradas. Requer revisão completa e plano de manutenção focado.`});
+  }
+
+  // Pneus com marca desconhecida
+  const semMarca = (DATA.pneus||[]).filter(r=>!r.marca||r.marca==='?'||r.marca==='—');
+  if(semMarca.length > 0) {
+    alertas.push({nivel:'warn', icon:'🔶', titulo:`${semMarca.length} pneu(s) sem marca/série registrada`, desc:`Placas: ${semMarca.map(r=>r.placa).join(', ')}. Falta de rastreabilidade dos pneus dificulta controle de garantia e desgaste.`});
+  }
+
+  // Taxa de emergenciais
+  const emerg = mans.filter(r=>r.tipo.includes('EMERGENCIAL')).length;
+  const pctEmerg = mans.length ? Math.round(emerg/mans.length*100) : 0;
+  if(pctEmerg > 40) {
+    alertas.push({nivel:'warn', icon:'🔧', titulo:`${pctEmerg}% das OS são corretivas emergenciais`, desc:`Meta da indústria: ≤ 30%. A inversão da curva exige ampliação do plano preventivo, checklists periódicos por veículo e manutenção por KM/horímetro.`});
+  }
+
+  // KM faltando
+  const semKm = (DATA.cadastro||[]).filter(r=>!r.km||r.km==='0'||r.km.toLowerCase()==='nan');
+  if(semKm.length > 0) {
+    alertas.push({nivel:'warn', icon:'💡', titulo:`KM Atual ausente em ${semKm.length} veículo(s)`, desc:`Placas: ${semKm.map(r=>r.placa).join(', ')}. Sem KM é impossível calcular custo/km ou programar manutenção por quilometragem.`});
+  }
+
+  // MTTR alto
+  const altMttr = indRows.filter(r=>r.mttr && r.mttr > 15);
+  if(altMttr.length > 0) {
+    alertas.push({nivel:'warn', icon:'⏱', titulo:`${altMttr.length} veículo(s) com MTTR > 15h`, desc:`Placas: ${altMttr.map(r=>r.placa+' ('+r.mttr+'h)').join(', ')}. Tempo de reparo elevado impacta diretamente na disponibilidade operacional.`});
+  }
+
+  if(alertas.length === 0) {
+    alertas.push({nivel:'warn', icon:'✅', titulo:'Nenhum alerta crítico detectado', desc:'Os dados carregados não indicam situações de risco imediato. Continue monitorando regularmente.'});
+  }
+
+  document.getElementById('alertasPanel').innerHTML = alertas.map(a=>`
+    <div class="alert-item ${a.nivel}">
+      <div class="alert-icon">${a.icon}</div>
+      <div class="alert-body">
+        <div class="al-title">${a.titulo}</div>
+        <div class="al-desc">${a.desc}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  syncData(true);
+});
+</script>
+</body>
+</html>
